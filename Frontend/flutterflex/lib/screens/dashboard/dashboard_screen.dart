@@ -139,7 +139,7 @@ class _HeroKpiCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Dein Trainingsvolumen dieser Woche bleibt auf Premium-Kurs.',
+            'Deine Trainingszeit dieser Woche bleibt auf Premium-Kurs.',
             style: theme.textTheme.bodyLarge?.copyWith(
               color: Colors.white.withValues(alpha: 0.86),
             ),
@@ -149,10 +149,8 @@ class _HeroKpiCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _KpiValue(
-                  label: 'Wochenvolumen',
-                  value: NumberFormat.compact(
-                    locale: 'de_DE',
-                  ).format(summary.weeklyVolume),
+                  label: 'Wochenzeit',
+                  value: _formatMinutes(summary.weeklyMinutes),
                 ),
               ),
               Expanded(
@@ -177,6 +175,16 @@ class _HeroKpiCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatMinutes(double minutes) {
+  final totalMinutes = minutes.round();
+  final hours = totalMinutes ~/ 60;
+  final remainingMinutes = totalMinutes % 60;
+  if (hours == 0) {
+    return '${remainingMinutes}m';
+  }
+  return '${hours}h ${remainingMinutes}m';
 }
 
 class _KpiValue extends StatelessWidget {
@@ -222,7 +230,7 @@ class _ActivityCard extends StatelessWidget {
     final maxValue = summary.activitySeries.fold<double>(
       1,
       (currentMax, point) =>
-          point.totalVolume > currentMax ? point.totalVolume : currentMax,
+          point.totalMinutes > currentMax ? point.totalMinutes : currentMax,
     );
 
     return Card(
@@ -243,7 +251,6 @@ class _ActivityCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: summary.activitySeries.map((point) {
-                  final barHeight = (point.totalVolume / maxValue) * 110;
                   return Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -251,13 +258,15 @@ class _ActivityCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            point.totalVolume.toStringAsFixed(0),
+                            '${point.totalMinutes.toStringAsFixed(0)}m',
                             style: theme.textTheme.labelSmall,
                           ),
                           const SizedBox(height: 8),
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 350),
-                            height: barHeight < 10 ? 10 : barHeight,
+                            height: ((point.totalMinutes / maxValue) * 110) < 10
+                                ? 10
+                                : ((point.totalMinutes / maxValue) * 110),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(18),
                               gradient: LinearGradient(

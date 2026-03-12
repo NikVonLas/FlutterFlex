@@ -32,6 +32,7 @@ class WorkoutSessionProvider extends ChangeNotifier {
   Duration _elapsed = Duration.zero;
   String _workoutName = '';
   String _workoutType = 'Strength';
+  bool _isManualEntry = false;
   bool _isSaving = false;
   String? _errorMessage;
 
@@ -39,21 +40,50 @@ class WorkoutSessionProvider extends ChangeNotifier {
   Duration get elapsed => _elapsed;
   bool get isSaving => _isSaving;
   bool get hasActiveSession => _startedAt != null;
+  bool get isManualEntry => _isManualEntry;
+  DateTime? get startedAt => _startedAt;
   String get workoutName => _workoutName;
   String get workoutType => _workoutType;
   String? get errorMessage => _errorMessage;
 
-  void startSessionIfNeeded() {
-    if (_startedAt != null) {
+  void initializeSession({
+    bool manualEntry = false,
+    DateTime? manualStartAt,
+    Duration? manualDuration,
+  }) {
+    if (!manualEntry && _startedAt != null && !_isManualEntry) {
       return;
     }
 
-    _startedAt = DateTime.now();
-    _elapsed = Duration.zero;
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _elapsed = DateTime.now().difference(_startedAt!);
-      notifyListeners();
-    });
+    _timer?.cancel();
+    _timer = null;
+    _isManualEntry = manualEntry;
+    _startedAt = manualEntry ? (manualStartAt ?? DateTime.now()) : DateTime.now();
+    _elapsed = manualEntry ? (manualDuration ?? const Duration(minutes: 60)) : Duration.zero;
+
+    if (!manualEntry) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _elapsed = DateTime.now().difference(_startedAt!);
+        notifyListeners();
+      });
+    }
+
+    notifyListeners();
+  }
+
+  void startSessionIfNeeded() {
+    initializeSession();
+  }
+
+  void setManualWorkoutDate(DateTime value) {
+    _isManualEntry = true;
+    _startedAt = value;
+    notifyListeners();
+  }
+
+  void setManualDuration(Duration value) {
+    _isManualEntry = true;
+    _elapsed = value;
     notifyListeners();
   }
 
@@ -68,7 +98,9 @@ class WorkoutSessionProvider extends ChangeNotifier {
   }
 
   void addExercise(ExerciseModel exercise) {
-    startSessionIfNeeded();
+    if (_startedAt == null) {
+      initializeSession(manualEntry: _isManualEntry);
+    }
     _exercises.add(TrackedExercise(exercise: exercise));
     notifyListeners();
   }
@@ -123,7 +155,10 @@ class WorkoutSessionProvider extends ChangeNotifier {
         'name': _workoutName.trim().isEmpty ? 'Premium Session' : _workoutName,
         'workoutType': _workoutType,
         'startTime': _startedAt!.toIso8601String(),
-        'endTime': DateTime.now().toIso8601String(),
+        'endTime': (_isManualEntry
+                ? _startedAt!.add(_elapsed)
+                : DateTime.now())
+            .toIso8601String(),
         'exercises': _exercises.map((exercise) {
           return {
             'exerciseId': exercise.exercise.id,
@@ -157,6 +192,7 @@ class WorkoutSessionProvider extends ChangeNotifier {
     _exercises.clear();
     _workoutName = '';
     _workoutType = 'Strength';
+    _isManualEntry = false;
     _isSaving = false;
     _errorMessage = null;
     notifyListeners();

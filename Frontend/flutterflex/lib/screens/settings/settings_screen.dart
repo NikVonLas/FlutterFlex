@@ -102,6 +102,17 @@ class SettingsScreen extends StatelessWidget {
                       await _syncSettings(context);
                     },
                   ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Farbenblindmodus'),
+                    subtitle: const Text(
+                      'Nutze kontrastreichere, farbenblindheitsfreundliche Akzentfarben.',
+                    ),
+                    value: appSettings.isColorBlindMode,
+                    onChanged: (value) {
+                      appSettings.setColorBlindMode(value);
+                    },
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,

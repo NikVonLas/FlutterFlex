@@ -15,7 +15,7 @@ exports.getSummary = async (req, res) => {
       }
 
       const [weeklyStats] = await connection.query(
-        `SELECT COALESCE(SUM(total_volume), 0) AS weekly_volume,
+        `SELECT COALESCE(SUM(TIMESTAMPDIFF(MINUTE, start_time, COALESCE(end_time, start_time))), 0) AS weekly_minutes,
                 COUNT(*) AS weekly_workouts
          FROM workouts
          WHERE user_id = ?
@@ -24,7 +24,8 @@ exports.getSummary = async (req, res) => {
       );
 
       const [activityRows] = await connection.query(
-        `SELECT DATE(start_time) AS day, COALESCE(SUM(total_volume), 0) AS total_volume
+        `SELECT DATE(start_time) AS day,
+                COALESCE(SUM(TIMESTAMPDIFF(MINUTE, start_time, COALESCE(end_time, start_time))), 0) AS total_minutes
          FROM workouts
          WHERE user_id = ?
            AND start_time >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
@@ -46,7 +47,7 @@ exports.getSummary = async (req, res) => {
       );
 
       const activityMap = new Map(
-        activityRows.map((row) => [new Date(row.day).toISOString().slice(0, 10), Number(row.total_volume)])
+        activityRows.map((row) => [new Date(row.day).toISOString().slice(0, 10), Number(row.total_minutes)])
       );
 
       const activitySeries = [];
@@ -58,13 +59,13 @@ exports.getSummary = async (req, res) => {
 
         activitySeries.push({
           label: date.toLocaleDateString('de-DE', { weekday: 'short' }),
-          totalVolume: activityMap.get(key) || 0
+          totalMinutes: activityMap.get(key) || 0
         });
       }
 
       res.json({
         greetingName: users[0].username || 'Athlete',
-        weeklyVolume: Number(weeklyStats[0].weekly_volume) || 0,
+        weeklyMinutes: Number(weeklyStats[0].weekly_minutes) || 0,
         weeklyWorkouts: weeklyStats[0].weekly_workouts || 0,
         activitySeries,
         recentWorkouts: recentWorkouts.map((workout) => ({

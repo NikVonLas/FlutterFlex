@@ -4,6 +4,7 @@ import 'dashboard/dashboard_screen.dart';
 import 'exercises/exercises_screen.dart';
 import 'history/history_screen.dart';
 import 'settings/settings_screen.dart';
+import 'statistics/statistics_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -17,6 +18,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   late final List<Widget> _screens = [
     const DashboardScreen(),
+    const StatisticsScreen(),
     const HistoryScreen(),
     const ExercisesScreen(),
     const SettingsScreen(),
@@ -42,6 +44,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 icon: Icon(Icons.dashboard_outlined),
                 selectedIcon: Icon(Icons.dashboard_rounded),
                 label: 'Dashboard',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.query_stats_outlined),
+                selectedIcon: Icon(Icons.query_stats_rounded),
+                label: 'Statistik',
               ),
               NavigationDestination(
                 icon: Icon(Icons.history_outlined),

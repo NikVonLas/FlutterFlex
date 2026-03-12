@@ -5,6 +5,7 @@ const router = express.Router();
 
 router.get('/', workoutController.getUserWorkouts);
 router.get('/user/:userId', workoutController.getUserWorkouts);
+router.get('/stats/muscle-groups', workoutController.getMuscleGroupStats);
 router.get('/stats/:userId', workoutController.getWorkoutStats);
 router.get('/:id', workoutController.getWorkoutById);
 router.post('/', workoutController.createWorkout);

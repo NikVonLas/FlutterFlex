@@ -35,4 +35,20 @@ class ExerciseService {
 
     return response.map((entry) => entry.toString()).toList();
   }
+
+  Future<void> createExercise({
+    required String name,
+    required String muscleGroup,
+    required String description,
+  }) async {
+    await _apiService.post(
+      '/exercises',
+      authenticated: true,
+      body: {
+        'name': name,
+        'muscle_group': muscleGroup,
+        if (description.isNotEmpty) 'description': description,
+      },
+    );
+  }
 }

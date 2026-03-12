@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
 import 'providers/app_settings_provider.dart';
@@ -17,6 +18,7 @@ import 'services/workout_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('de_DE');
 
   final appSettingsProvider = AppSettingsProvider();
   await appSettingsProvider.loadSettings();

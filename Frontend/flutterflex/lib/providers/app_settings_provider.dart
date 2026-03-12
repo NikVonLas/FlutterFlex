@@ -10,15 +10,24 @@ class AppSettingsProvider extends ChangeNotifier {
   static const String _themeKey = 'selected_theme';
   static const String _unitKey = 'selected_unit';
   static const String _modeKey = 'selected_mode';
+  static const String _colorBlindModeKey = 'color_blind_mode';
+  static const String _weeklyWorkoutGoalKey = 'weekly_workout_goal';
+  static const String _weeklyVolumeGoalKey = 'weekly_volume_goal';
 
   AppThemeOption _selectedTheme = AppThemeOption.ocean;
   WeightUnit _selectedUnit = WeightUnit.kg;
   ThemeMode _themeMode = ThemeMode.dark;
+  bool _isColorBlindMode = false;
+  int _weeklyWorkoutGoal = 3;
+  double _weeklyVolumeGoal = 5000;
 
   AppThemeOption get selectedTheme => _selectedTheme;
   WeightUnit get selectedUnit => _selectedUnit;
   ThemeMode get themeMode => _themeMode;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
+  bool get isColorBlindMode => _isColorBlindMode;
+  int get weeklyWorkoutGoal => _weeklyWorkoutGoal;
+  double get weeklyVolumeGoal => _weeklyVolumeGoal;
   int get selectedThemeIndex => _selectedTheme.index;
   String get selectedUnitApiValue => _selectedUnit.name;
   String get selectedModeApiValue => isDarkMode ? 'dark' : 'light';
@@ -34,6 +43,12 @@ class AppSettingsProvider extends ChangeNotifier {
     final savedTheme = preferences.getString(_themeKey);
     final savedUnit = preferences.getString(_unitKey);
     final savedMode = preferences.getString(_modeKey);
+    final savedColorBlindMode =
+      preferences.getBool(_colorBlindModeKey) ?? false;
+    final savedWeeklyWorkoutGoal =
+      preferences.getInt(_weeklyWorkoutGoalKey) ?? 3;
+    final savedWeeklyVolumeGoal =
+      preferences.getDouble(_weeklyVolumeGoalKey) ?? 5000;
 
     if (savedTheme != null) {
       _selectedTheme = AppThemeOption.values.firstWhere(
@@ -52,6 +67,10 @@ class AppSettingsProvider extends ChangeNotifier {
     if (savedMode != null) {
       _themeMode = savedMode == 'light' ? ThemeMode.light : ThemeMode.dark;
     }
+
+    _isColorBlindMode = savedColorBlindMode;
+    _weeklyWorkoutGoal = savedWeeklyWorkoutGoal < 1 ? 3 : savedWeeklyWorkoutGoal;
+    _weeklyVolumeGoal = savedWeeklyVolumeGoal <= 0 ? 5000 : savedWeeklyVolumeGoal;
   }
 
   Future<void> setTheme(AppThemeOption theme, {bool persist = true}) async {
@@ -87,6 +106,32 @@ class AppSettingsProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> setColorBlindMode(bool value, {bool persist = true}) async {
+    _isColorBlindMode = value;
+    notifyListeners();
+
+    if (persist) {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool(_colorBlindModeKey, value);
+    }
+  }
+
+  Future<void> setWeeklyGoals({
+    required int workoutGoal,
+    required double volumeGoal,
+    bool persist = true,
+  }) async {
+    _weeklyWorkoutGoal = workoutGoal < 1 ? 1 : workoutGoal;
+    _weeklyVolumeGoal = volumeGoal <= 0 ? 100 : volumeGoal;
+    notifyListeners();
+
+    if (persist) {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setInt(_weeklyWorkoutGoalKey, _weeklyWorkoutGoal);
+      await preferences.setDouble(_weeklyVolumeGoalKey, _weeklyVolumeGoal);
+    }
+  }
+
   Future<void> applyRemotePreferences({
     required String preferredUnit,
     required int preferredTheme,
@@ -110,24 +155,33 @@ class AppSettingsProvider extends ChangeNotifier {
     required AppThemeOption themeOption,
     required Brightness brightness,
   }) {
-    final seedColor = switch (themeOption) {
-      AppThemeOption.ocean => const Color(0xFF24A0ED),
-      AppThemeOption.forest => const Color(0xFF2ECC71),
-      AppThemeOption.sunset => const Color(0xFFFF8A3D),
-      AppThemeOption.ruby => const Color(0xFFFF4D6D),
-      AppThemeOption.slate => const Color(0xFF7A8CA5),
-    };
+    final seedColor = _seedColorFor(themeOption);
+    final isDark = brightness == Brightness.dark;
+
+    ColorScheme scheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: brightness,
+    );
+
+    // In colorblind mode override auto-generated colors that rely on
+    // red/green distinction (the most common form of color blindness).
+    if (_isColorBlindMode) {
+      scheme = scheme.copyWith(
+        // Replace the typically-red error color with orange/amber
+        error: isDark ? const Color(0xFFFFB74D) : const Color(0xFFD55E00),
+        onError: Colors.white,
+        // Force secondary to a clearly distinct hue (Okabe-Ito orange)
+        secondary: isDark ? const Color(0xFFFFB74D) : const Color(0xFFE69F00),
+        onSecondary: Colors.black,
+      );
+    }
 
     final base = ThemeData(
       useMaterial3: true,
       brightness: brightness,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: seedColor,
-        brightness: brightness,
-      ),
+      colorScheme: scheme,
     );
 
-    final isDark = brightness == Brightness.dark;
     final surfaceColor = isDark ? const Color(0xFF141A24) : Colors.white;
     final scaffoldColor = isDark
         ? const Color(0xFF0B1017)
@@ -184,5 +238,27 @@ class AppSettingsProvider extends ChangeNotifier {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
+  }
+
+  Color _seedColorFor(AppThemeOption themeOption) {
+    if (_isColorBlindMode) {
+      // Use Okabe-Ito / WCAG-tested hues that remain distinguishable
+      // under deuteranopia, protanopia, and tritanopia.
+      return switch (themeOption) {
+        AppThemeOption.ocean  => const Color(0xFF0072B2), // Okabe-Ito blue
+        AppThemeOption.forest => const Color(0xFF009E73), // Okabe-Ito blue-green
+        AppThemeOption.sunset => const Color(0xFFE69F00), // Okabe-Ito orange
+        AppThemeOption.ruby   => const Color(0xFFCC79A7), // Okabe-Ito rose
+        AppThemeOption.slate  => const Color(0xFF56B4E9), // Okabe-Ito sky-blue
+      };
+    }
+
+    return switch (themeOption) {
+      AppThemeOption.ocean => const Color(0xFF24A0ED),
+      AppThemeOption.forest => const Color(0xFF2ECC71),
+      AppThemeOption.sunset => const Color(0xFFFF8A3D),
+      AppThemeOption.ruby => const Color(0xFFFF4D6D),
+      AppThemeOption.slate => const Color(0xFF7A8CA5),
+    };
   }
 }

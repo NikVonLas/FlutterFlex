@@ -30,4 +30,8 @@ class WorkoutHistoryProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<List<MuscleGroupStat>> fetchMuscleGroupStats({int? days}) {
+    return _workoutService.fetchMuscleGroupStats(days: days);
+  }
 }

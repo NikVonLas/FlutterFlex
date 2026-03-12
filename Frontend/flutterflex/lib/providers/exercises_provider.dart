@@ -58,4 +58,17 @@ class ExercisesProvider extends ChangeNotifier {
     _searchQuery = value;
     notifyListeners();
   }
+
+  Future<void> addExercise({
+    required String name,
+    required String muscleGroup,
+    required String description,
+  }) async {
+    await _exerciseService.createExercise(
+      name: name,
+      muscleGroup: muscleGroup,
+      description: description,
+    );
+    await loadExercises();
+  }
 }

@@ -181,26 +181,87 @@ exports.createWorkout = async (req, res) => {
 exports.updateWorkout = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, workoutType, workout_type, endTime, end_time, totalVolume, total_volume } = req.body;
+    const {
+      name,
+      workoutType,
+      workout_type,
+      startTime,
+      start_time,
+      endTime,
+      end_time,
+      totalVolume,
+      total_volume,
+      exercises
+    } = req.body;
 
     const connection = await pool.getConnection();
 
     try {
+      await connection.beginTransaction();
+
+      const [existingWorkouts] = await connection.query(
+        `SELECT id, start_time, end_time
+         FROM workouts
+         WHERE id = ? AND user_id = ?`,
+        [id, req.userId]
+      );
+
+      if (existingWorkouts.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({ error: 'Workout nicht gefunden' });
+      }
+
+      const normalizedExercises = Array.isArray(exercises) ? exercises : null;
+      const nextTotalVolume = normalizedExercises
+        ? calculateTotalVolume(normalizedExercises)
+        : Number(totalVolume ?? total_volume) || 0;
+
       await connection.query(
         `UPDATE workouts
-         SET name = ?, workout_type = ?, end_time = ?, total_volume = ?
+         SET name = ?, workout_type = ?, start_time = ?, end_time = ?, total_volume = ?
          WHERE id = ? AND user_id = ?`,
         [
           name,
           workoutType || workout_type,
-          endTime || end_time,
-          Number(totalVolume ?? total_volume) || 0,
+          startTime || start_time || existingWorkouts[0].start_time,
+          endTime || end_time || existingWorkouts[0].end_time,
+          nextTotalVolume,
           id,
           req.userId
         ]
       );
 
+      if (normalizedExercises) {
+        await connection.query('DELETE FROM workout_sets WHERE workout_id = ?', [id]);
+
+        for (const exercise of normalizedExercises) {
+          let setNumber = 1;
+
+          for (const workoutSet of exercise.sets || []) {
+            await connection.query(
+              `INSERT INTO workout_sets (workout_id, exercise_id, set_number, weight, reps, duration_seconds)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                id,
+                exercise.exerciseId,
+                setNumber,
+                Number(workoutSet.weight) || 0,
+                Number(workoutSet.reps) || 0,
+                Number(workoutSet.durationSeconds) || 0
+              ]
+            );
+
+            setNumber += 1;
+          }
+        }
+      }
+
+      await connection.commit();
+
       res.json({ message: 'Workout aktualisiert' });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
     } finally {
       connection.release();
     }
@@ -349,6 +410,41 @@ exports.deleteSet = async (req, res) => {
       );
 
       res.json({ message: 'Set geloescht' });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getMuscleGroupStats = async (req, res) => {
+  try {
+    const { days } = req.query;
+    const params = [req.userId];
+    let dateFilter = '';
+
+    const daysInt = parseInt(days, 10);
+    if (!isNaN(daysInt) && daysInt > 0) {
+      dateFilter = 'AND w.start_time >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+      params.push(daysInt);
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      const [rows] = await connection.query(
+        `SELECT e.muscle_group,
+                COUNT(DISTINCT ws.workout_id) AS workout_count,
+                COUNT(*) AS set_count
+         FROM workout_sets ws
+         JOIN exercises e ON ws.exercise_id = e.id
+         JOIN workouts w ON ws.workout_id = w.id
+         WHERE w.user_id = ? ${dateFilter}
+         GROUP BY e.muscle_group
+         ORDER BY workout_count DESC`,
+        params
+      );
+      res.json(rows);
     } finally {
       connection.release();
     }

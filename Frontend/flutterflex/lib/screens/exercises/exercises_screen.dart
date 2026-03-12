@@ -19,6 +19,88 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
     });
   }
 
+  Future<void> _showAddExerciseDialog() async {
+    final nameController = TextEditingController();
+    final muscleGroupController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Neue Uebung'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Name *',
+                      prefixIcon: Icon(Icons.fitness_center_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: muscleGroupController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Muskelgruppe *',
+                      prefixIcon: Icon(Icons.accessibility_new_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descriptionController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Beschreibung',
+                      prefixIcon: Icon(Icons.notes_rounded),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Abbrechen'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Hinzufuegen'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed || !mounted) return;
+
+    final name = nameController.text.trim();
+    final muscleGroup = muscleGroupController.text.trim();
+    if (name.isEmpty || muscleGroup.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name und Muskelgruppe sind Pflichtfelder.')),
+      );
+      return;
+    }
+
+    try {
+      await context.read<ExercisesProvider>().addExercise(
+        name: name,
+        muscleGroup: muscleGroup,
+        description: descriptionController.text.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final exercisesProvider = context.watch<ExercisesProvider>();
@@ -26,6 +108,11 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Uebungs-Bibliothek')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddExerciseDialog,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Neue Uebung'),
+      ),
       body: RefreshIndicator(
         onRefresh: exercisesProvider.loadExercises,
         child: ListView(

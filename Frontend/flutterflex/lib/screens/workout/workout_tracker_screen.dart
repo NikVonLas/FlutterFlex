@@ -6,7 +6,16 @@ import '../../providers/workout_history_provider.dart';
 import '../../providers/workout_session_provider.dart';
 
 class WorkoutTrackerScreen extends StatefulWidget {
-  const WorkoutTrackerScreen({super.key});
+  const WorkoutTrackerScreen({
+    this.initialManualEntry = false,
+    this.initialManualStartAt,
+    this.initialManualDuration,
+    super.key,
+  });
+
+  final bool initialManualEntry;
+  final DateTime? initialManualStartAt;
+  final Duration? initialManualDuration;
 
   @override
   State<WorkoutTrackerScreen> createState() => _WorkoutTrackerScreenState();
@@ -14,13 +23,18 @@ class WorkoutTrackerScreen extends StatefulWidget {
 
 class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
   final _nameController = TextEditingController();
+  final _customTypeController = TextEditingController();
   final List<String> _workoutTypes = ['Strength', 'Push', 'Pull', 'Legs'];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<WorkoutSessionProvider>().startSessionIfNeeded();
+      context.read<WorkoutSessionProvider>().initializeSession(
+        manualEntry: widget.initialManualEntry,
+        manualStartAt: widget.initialManualStartAt,
+        manualDuration: widget.initialManualDuration,
+      );
       context.read<ExercisesProvider>().loadExercises();
     });
   }
@@ -28,7 +42,20 @@ class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _customTypeController.dispose();
     super.dispose();
+  }
+
+  void _applyCustomWorkoutType() {
+    final customType = _customTypeController.text.trim();
+    if (customType.isEmpty) return;
+    final workoutSession = context.read<WorkoutSessionProvider>();
+    setState(() {
+      if (!_workoutTypes.contains(customType)) {
+        _workoutTypes.add(customType);
+      }
+    });
+    workoutSession.setWorkoutType(customType);
   }
 
   Future<void> _openExercisePicker() async {
@@ -92,6 +119,93 @@ class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
     );
   }
 
+  Future<void> _pickWorkoutDateTime() async {
+    final workoutSession = context.read<WorkoutSessionProvider>();
+    final currentDate = workoutSession.startedAt ?? DateTime.now();
+
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: currentDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+
+    if (selectedDate == null || !mounted) {
+      return;
+    }
+
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(currentDate),
+    );
+
+    if (selectedTime == null) {
+      return;
+    }
+
+    final selectedDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    if (selectedDateTime.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Das Workout-Datum darf nicht in der Zukunft liegen.'),
+        ),
+      );
+      return;
+    }
+
+    workoutSession.setManualWorkoutDate(selectedDateTime);
+  }
+
+  Future<void> _pickDuration() async {
+    final workoutSession = context.read<WorkoutSessionProvider>();
+    final durationController = TextEditingController(
+      text: workoutSession.elapsed.inMinutes.toString(),
+    );
+
+    final shouldSave =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: const Text('Dauer festlegen'),
+              content: TextField(
+                controller: durationController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Minuten',
+                  suffixText: 'min',
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Abbrechen'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Speichern'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+
+    if (!shouldSave) {
+      return;
+    }
+
+    final minutes = int.tryParse(durationController.text.trim()) ?? 60;
+    workoutSession.setManualDuration(Duration(minutes: minutes.clamp(1, 600)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final workoutSession = context.watch<WorkoutSessionProvider>();
@@ -100,6 +214,8 @@ class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
     final minutes = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = elapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
     final hours = elapsed.inHours.toString().padLeft(2, '0');
+    final startedAt = workoutSession.startedAt;
+    final localizations = MaterialLocalizations.of(context);
 
     if (_nameController.text != workoutSession.workoutName) {
       _nameController.text = workoutSession.workoutName;
@@ -109,7 +225,13 @@ class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Active Workout Tracker')),
+      appBar: AppBar(
+        title: Text(
+          workoutSession.isManualEntry
+              ? 'Workout nachtragen'
+              : 'Active Workout Tracker',
+        ),
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -122,7 +244,11 @@ class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2.2),
                   )
                 : const Icon(Icons.check_circle_outline_rounded),
-            label: const Text('Workout beenden'),
+            label: Text(
+              workoutSession.isManualEntry
+                  ? 'Workout speichern'
+                  : 'Workout beenden',
+            ),
           ),
         ),
       ),
@@ -143,20 +269,64 @@ class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '$hours:$minutes:$seconds',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                if (workoutSession.isManualEntry)
+                  Text(
+                    startedAt == null
+                        ? 'Datum waehlen'
+                        : localizations.formatFullDate(startedAt),
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
+                else
+                  Text(
+                    '$hours:$minutes:$seconds',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
                 const SizedBox(height: 8),
                 Text(
-                  'Laufende Session mit Live-Timer und frei editierbaren Saetzen.',
+                  workoutSession.isManualEntry
+                      ? 'Trage ein Workout fuer ein bestimmtes vergangenes Datum nach.'
+                      : 'Laufende Session mit Live-Timer und frei editierbaren Saetzen.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: Colors.white.withValues(alpha: 0.84),
                   ),
                 ),
+                if (workoutSession.isManualEntry) ...[
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white70),
+                        ),
+                        onPressed: _pickWorkoutDateTime,
+                        icon: const Icon(Icons.event_outlined),
+                        label: Text(
+                          startedAt == null
+                              ? 'Datum und Uhrzeit'
+                              : '${localizations.formatMediumDate(startedAt)} ${localizations.formatTimeOfDay(TimeOfDay.fromDateTime(startedAt))}',
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white70),
+                        ),
+                        onPressed: _pickDuration,
+                        icon: const Icon(Icons.schedule_rounded),
+                        label: Text('${workoutSession.elapsed.inMinutes} min'),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 18),
                 TextField(
                   controller: _nameController,
@@ -176,6 +346,21 @@ class _WorkoutTrackerScreenState extends State<WorkoutTrackerScreen> {
                       onSelected: (_) => workoutSession.setWorkoutType(type),
                     );
                   }).toList(),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _customTypeController,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: 'Eigener Workout-Typ',
+                    prefixIcon: const Icon(Icons.add_box_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: 'Typ uebernehmen',
+                      onPressed: _applyCustomWorkoutType,
+                      icon: const Icon(Icons.check_rounded),
+                    ),
+                  ),
+                  onSubmitted: (_) => _applyCustomWorkoutType(),
                 ),
               ],
             ),
