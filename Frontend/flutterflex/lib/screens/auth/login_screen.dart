@@ -11,14 +11,19 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _isRegisterMode = false;
 
   @override
   void dispose() {
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -27,21 +32,37 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final success = await context.read<AuthProvider>().login(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
+    final authProvider = context.read<AuthProvider>();
+    final success = _isRegisterMode
+        ? await authProvider.register(
+            username: _usernameController.text.trim(),
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          )
+        : await authProvider.login(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          );
 
     if (!mounted || success) {
       return;
     }
 
     final errorText =
-        context.read<AuthProvider>().errorMessage ??
-        'Login konnte nicht abgeschlossen werden.';
+        authProvider.errorMessage ??
+        (_isRegisterMode
+            ? 'Registrierung konnte nicht abgeschlossen werden.'
+            : 'Login konnte nicht abgeschlossen werden.');
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(errorText)));
+  }
+
+  void _toggleMode() {
+    setState(() {
+      _isRegisterMode = !_isRegisterMode;
+      _formKey.currentState?.reset();
+    });
   }
 
   @override
@@ -156,15 +177,39 @@ class _LoginScreenState extends State<LoginScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Login',
+                              _isRegisterMode ? 'Account erstellen' : 'Login',
                               style: theme.textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                             const SizedBox(height: 20),
+                            if (_isRegisterMode) ...[
+                              TextFormField(
+                                controller: _usernameController,
+                                textInputAction: TextInputAction.next,
+                                decoration: const InputDecoration(
+                                  labelText: 'Benutzername',
+                                  prefixIcon: Icon(Icons.person_outline_rounded),
+                                ),
+                                validator: (value) {
+                                  if (!_isRegisterMode) {
+                                    return null;
+                                  }
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Bitte Benutzernamen eingeben.';
+                                  }
+                                  if (value.trim().length < 3) {
+                                    return 'Benutzername muss mindestens 3 Zeichen haben.';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                             TextFormField(
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
                               decoration: const InputDecoration(
                                 labelText: 'E-Mail',
                                 prefixIcon: Icon(Icons.mail_outline_rounded),
@@ -183,6 +228,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextFormField(
                               controller: _passwordController,
                               obscureText: true,
+                              textInputAction: _isRegisterMode
+                                  ? TextInputAction.next
+                                  : TextInputAction.done,
                               decoration: const InputDecoration(
                                 labelText: 'Passwort',
                                 prefixIcon: Icon(Icons.lock_outline_rounded),
@@ -191,9 +239,41 @@ class _LoginScreenState extends State<LoginScreen> {
                                 if (value == null || value.isEmpty) {
                                   return 'Bitte Passwort eingeben.';
                                 }
+                                if (_isRegisterMode && value.length < 6) {
+                                  return 'Passwort muss mindestens 6 Zeichen haben.';
+                                }
                                 return null;
                               },
                             ),
+                            if (_isRegisterMode) ...[
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _confirmPasswordController,
+                                obscureText: true,
+                                textInputAction: TextInputAction.done,
+                                decoration: const InputDecoration(
+                                  labelText: 'Passwort wiederholen',
+                                  prefixIcon: Icon(Icons.verified_user_outlined),
+                                ),
+                                validator: (value) {
+                                  if (!_isRegisterMode) {
+                                    return null;
+                                  }
+                                  if (value == null || value.isEmpty) {
+                                    return 'Bitte Passwort bestaetigen.';
+                                  }
+                                  if (value != _passwordController.text) {
+                                    return 'Passwoerter stimmen nicht ueberein.';
+                                  }
+                                  return null;
+                                },
+                                onFieldSubmitted: (_) {
+                                  if (!authProvider.isLoading) {
+                                    _submit();
+                                  }
+                                },
+                              ),
+                            ],
                             const SizedBox(height: 24),
                             ElevatedButton(
                               onPressed: authProvider.isLoading
@@ -207,7 +287,25 @@ class _LoginScreenState extends State<LoginScreen> {
                                         strokeWidth: 2.4,
                                       ),
                                     )
-                                  : const Text('Login'),
+                                  : Text(
+                                      _isRegisterMode
+                                          ? 'Account erstellen'
+                                          : 'Login',
+                                    ),
+                            ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton(
+                                onPressed: authProvider.isLoading
+                                    ? null
+                                    : _toggleMode,
+                                child: Text(
+                                  _isRegisterMode
+                                      ? 'Ich habe schon einen Account'
+                                      : 'Neuen Account erstellen',
+                                ),
+                              ),
                             ),
                           ],
                         ),

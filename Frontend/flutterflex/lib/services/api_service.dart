@@ -9,8 +9,11 @@ class ApiService {
     : _client = client ?? http.Client(),
       _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
-  static const String _androidEmulatorBaseUrl = 'http://10.0.2.2:5000/api';
-  static const String _localDesktopBaseUrl = 'http://localhost:5000/api';
+  static const String _configuredBaseUrl = String.fromEnvironment(
+    'FLUTTERFLEX_API_BASE_URL',
+  );
+  static const String _androidEmulatorBaseUrl = 'http://10.0.2.2:3000/api';
+  static const String _localDesktopBaseUrl = 'http://localhost:3000/api';
   static const String _tokenKey = 'jwt_token';
 
   final http.Client _client;
@@ -19,6 +22,10 @@ class ApiService {
   String? _token;
 
   String get baseUrl {
+    if (_configuredBaseUrl.isNotEmpty) {
+      return _configuredBaseUrl;
+    }
+
     if (kIsWeb) {
       return _localDesktopBaseUrl;
     }

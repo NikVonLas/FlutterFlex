@@ -49,7 +49,33 @@ class AuthProvider extends ChangeNotifier {
       await _applyUserPreferences(_currentUser!);
       return true;
     } catch (error) {
-      _errorMessage = error.toString().replaceFirst('ApiException(401): ', '');
+      _errorMessage = _normalizeError(error);
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> register({
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _currentUser = await _authService.register(
+        username: username,
+        email: email,
+        password: password,
+      );
+      await _applyUserPreferences(_currentUser!);
+      return true;
+    } catch (error) {
+      _errorMessage = _normalizeError(error);
       return false;
     } finally {
       _isLoading = false;
@@ -89,5 +115,11 @@ class AuthProvider extends ChangeNotifier {
       preferredTheme: user.preferredTheme,
       preferredMode: user.preferredMode,
     );
+  }
+
+  String _normalizeError(Object error) {
+    return error
+        .toString()
+        .replaceFirst(RegExp(r'^ApiException\(\d+\):\s*'), '');
   }
 }

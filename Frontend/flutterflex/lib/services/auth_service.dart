@@ -6,6 +6,19 @@ class AuthService {
 
   final ApiService _apiService;
 
+  Future<UserModel> register({
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    await _apiService.post(
+      '/register',
+      body: {'username': username, 'email': email, 'password': password},
+    );
+
+    return login(email: email, password: password);
+  }
+
   Future<UserModel> login({
     required String email,
     required String password,
