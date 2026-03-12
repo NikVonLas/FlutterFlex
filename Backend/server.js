@@ -2,10 +2,14 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const { initializeDatabase } = require('./config/db');
+const verifyToken = require('./middleware/auth');
 
 // Routes importieren
+const authController = require('./controllers/authController');
 const authRoutes = require('./routes/authRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const exerciseRoutes = require('./routes/exerciseRoutes');
+const userRoutes = require('./routes/userRoutes');
 const workoutRoutes = require('./routes/workoutRoutes');
 
 const app = express();
@@ -17,9 +21,13 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Routes
+app.post('/api/login', authController.login);
+app.post('/api/register', authController.register);
 app.use('/api/auth', authRoutes);
+app.use('/api/dashboard', verifyToken, dashboardRoutes);
 app.use('/api/exercises', exerciseRoutes);
-app.use('/api/workouts', workoutRoutes);
+app.use('/api/users', verifyToken, userRoutes);
+app.use('/api/workouts', verifyToken, workoutRoutes);
 
 // Health Check
 app.get('/api/health', (req, res) => {

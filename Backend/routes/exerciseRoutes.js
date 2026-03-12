@@ -6,6 +6,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Alle Übungen
+router.get('/meta/muscle-groups', exerciseController.getMuscleGroups);
 router.get('/', exerciseController.getAllExercises);
 
 // Übungen nach Muskelgruppe

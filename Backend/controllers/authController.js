@@ -5,6 +5,18 @@ require('dotenv').config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
+function mapUser(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    preferredUnit: user.preferred_unit,
+    preferredTheme: user.preferred_theme,
+    preferredMode: user.preferred_mode,
+    createdAt: user.created_at
+  };
+}
+
 // Registrieren
 exports.register = async (req, res) => {
   try {
@@ -51,7 +63,12 @@ exports.login = async (req, res) => {
 
     const connection = await pool.getConnection();
     try {
-      const [users] = await connection.query('SELECT id, username, password_hash FROM users WHERE email = ?', [email]);
+      const [users] = await connection.query(
+        `SELECT id, username, email, password_hash, preferred_unit, preferred_theme, preferred_mode, created_at
+         FROM users
+         WHERE email = ?`,
+        [email]
+      );
 
       if (users.length === 0) {
         return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
@@ -73,8 +90,7 @@ exports.login = async (req, res) => {
       res.json({
         message: 'Login erfolgreich',
         token: token,
-        userId: user.id,
-        username: user.username
+        user: mapUser(user)
       });
     } finally {
       connection.release();
@@ -92,7 +108,9 @@ exports.getProfile = async (req, res) => {
 
     try {
       const [users] = await connection.query(
-        'SELECT id, username, email, preferred_unit, preferred_theme, created_at FROM users WHERE id = ?',
+        `SELECT id, username, email, preferred_unit, preferred_theme, preferred_mode, created_at
+         FROM users
+         WHERE id = ?`,
         [userId]
       );
 
@@ -100,7 +118,32 @@ exports.getProfile = async (req, res) => {
         return res.status(404).json({ error: 'Benutzer nicht gefunden' });
       }
 
-      res.json(users[0]);
+      res.json(mapUser(users[0]));
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getCurrentUser = async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    try {
+      const [users] = await connection.query(
+        `SELECT id, username, email, preferred_unit, preferred_theme, preferred_mode, created_at
+         FROM users
+         WHERE id = ?`,
+        [req.userId]
+      );
+
+      if (users.length === 0) {
+        return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+      }
+
+      res.json(mapUser(users[0]));
     } finally {
       connection.release();
     }

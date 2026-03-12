@@ -1,19 +1,57 @@
 const { pool } = require('../config/db');
 
-// ==================== WORKOUT ENDPOINTS ====================
+function calculateTotalVolume(exercises) {
+  return exercises.reduce((totalVolume, exercise) => {
+    const exerciseVolume = (exercise.sets || []).reduce((setVolume, workoutSet) => {
+      if (workoutSet.isCompleted == null || workoutSet.isCompleted) {
+        return setVolume + (Number(workoutSet.weight) || 0) * (Number(workoutSet.reps) || 0);
+      }
 
-// Alle Workouts eines Benutzers abrufen
+      return setVolume;
+    }, 0);
+
+    return totalVolume + exerciseVolume;
+  }, 0);
+}
+
+function calculateDurationSeconds(startTime, endTime) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+}
+
+function mapWorkout(workout) {
+  return {
+    ...workout,
+    duration_seconds: workout.end_time
+      ? calculateDurationSeconds(workout.start_time, workout.end_time)
+      : 0
+  };
+}
+
 exports.getUserWorkouts = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.params.userId || req.userId;
     const connection = await pool.getConnection();
 
     try {
       const [workouts] = await connection.query(
-        'SELECT id, user_id, name, workout_type, start_time, end_time, total_volume FROM workouts WHERE user_id = ? ORDER BY start_time DESC',
+        `SELECT w.id, w.user_id, w.name, w.workout_type, w.start_time, w.end_time, w.total_volume,
+                COUNT(ws.id) AS total_sets
+         FROM workouts w
+         LEFT JOIN workout_sets ws ON ws.workout_id = w.id
+         WHERE w.user_id = ?
+         GROUP BY w.id
+         ORDER BY w.start_time DESC`,
         [userId]
       );
-      res.json(workouts);
+
+      res.json(workouts.map(mapWorkout));
     } finally {
       connection.release();
     }
@@ -22,7 +60,6 @@ exports.getUserWorkouts = async (req, res) => {
   }
 };
 
-// Einzelnes Workout abrufen
 exports.getWorkoutById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -30,42 +67,28 @@ exports.getWorkoutById = async (req, res) => {
 
     try {
       const [workouts] = await connection.query(
-        'SELECT id, user_id, name, workout_type, start_time, end_time, total_volume FROM workouts WHERE id = ?',
-        [id]
+        `SELECT id, user_id, name, workout_type, start_time, end_time, total_volume
+         FROM workouts
+         WHERE id = ? AND user_id = ?`,
+        [id, req.userId]
       );
 
       if (workouts.length === 0) {
         return res.status(404).json({ error: 'Workout nicht gefunden' });
       }
 
-      res.json(workouts[0]);
-    } finally {
-      connection.release();
-    }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Neues Workout starten
-exports.createWorkout = async (req, res) => {
-  try {
-    const { user_id, name, workout_type, start_time } = req.body;
-
-    if (!user_id || !start_time) {
-      return res.status(400).json({ error: 'user_id und start_time sind erforderlich' });
-    }
-
-    const connection = await pool.getConnection();
-    try {
-      const [result] = await connection.query(
-        'INSERT INTO workouts (user_id, name, workout_type, start_time, total_volume) VALUES (?, ?, ?, ?, 0)',
-        [user_id, name || null, workout_type || null, start_time]
+      const [sets] = await connection.query(
+        `SELECT ws.id, ws.exercise_id, ws.set_number, ws.weight, ws.reps, ws.duration_seconds, e.name AS exercise_name
+         FROM workout_sets ws
+         JOIN exercises e ON e.id = ws.exercise_id
+         WHERE ws.workout_id = ?
+         ORDER BY e.name ASC, ws.set_number ASC`,
+        [id]
       );
 
-      res.status(201).json({
-        message: 'Workout erstellt',
-        workoutId: result.insertId
+      res.json({
+        ...mapWorkout(workouts[0]),
+        sets
       });
     } finally {
       connection.release();
@@ -75,17 +98,106 @@ exports.createWorkout = async (req, res) => {
   }
 };
 
-// Workout aktualisieren
+exports.createWorkout = async (req, res) => {
+  try {
+    const {
+      name,
+      workoutType,
+      workout_type,
+      startTime,
+      start_time,
+      endTime,
+      end_time,
+      exercises = []
+    } = req.body;
+
+    const normalizedStartTime = startTime || start_time || new Date().toISOString();
+    const normalizedEndTime = endTime || end_time || new Date().toISOString();
+
+    if (!Array.isArray(exercises) || exercises.length === 0) {
+      return res.status(400).json({ error: 'Mindestens eine Uebung ist erforderlich' });
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const totalVolume = calculateTotalVolume(exercises);
+      const [result] = await connection.query(
+        `INSERT INTO workouts (user_id, name, workout_type, start_time, end_time, total_volume)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          req.userId,
+          name || 'Workout Session',
+          workoutType || workout_type || 'Strength',
+          normalizedStartTime,
+          normalizedEndTime,
+          totalVolume
+        ]
+      );
+
+      const workoutId = result.insertId;
+
+      for (const exercise of exercises) {
+        let setNumber = 1;
+
+        for (const workoutSet of exercise.sets || []) {
+          await connection.query(
+            `INSERT INTO workout_sets (workout_id, exercise_id, set_number, weight, reps, duration_seconds)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              workoutId,
+              exercise.exerciseId,
+              setNumber,
+              Number(workoutSet.weight) || 0,
+              Number(workoutSet.reps) || 0,
+              Number(workoutSet.durationSeconds) || 0
+            ]
+          );
+
+          setNumber += 1;
+        }
+      }
+
+      await connection.commit();
+
+      res.status(201).json({
+        message: 'Workout gespeichert',
+        workoutId,
+        totalVolume
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 exports.updateWorkout = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, workout_type, end_time, total_volume } = req.body;
+    const { name, workoutType, workout_type, endTime, end_time, totalVolume, total_volume } = req.body;
 
     const connection = await pool.getConnection();
+
     try {
       await connection.query(
-        'UPDATE workouts SET name = ?, workout_type = ?, end_time = ?, total_volume = ? WHERE id = ?',
-        [name, workout_type, end_time, total_volume || 0, id]
+        `UPDATE workouts
+         SET name = ?, workout_type = ?, end_time = ?, total_volume = ?
+         WHERE id = ? AND user_id = ?`,
+        [
+          name,
+          workoutType || workout_type,
+          endTime || end_time,
+          Number(totalVolume ?? total_volume) || 0,
+          id,
+          req.userId
+        ]
       );
 
       res.json({ message: 'Workout aktualisiert' });
@@ -97,15 +209,17 @@ exports.updateWorkout = async (req, res) => {
   }
 };
 
-// Workout löschen
 exports.deleteWorkout = async (req, res) => {
   try {
     const { id } = req.params;
     const connection = await pool.getConnection();
 
     try {
-      await connection.query('DELETE FROM workouts WHERE id = ?', [id]);
-      res.json({ message: 'Workout gelöscht' });
+      await connection.query(
+        'DELETE FROM workouts WHERE id = ? AND user_id = ?',
+        [id, req.userId]
+      );
+      res.json({ message: 'Workout geloescht' });
     } finally {
       connection.release();
     }
@@ -114,9 +228,6 @@ exports.deleteWorkout = async (req, res) => {
   }
 };
 
-// ==================== WORKOUT SETS ENDPOINTS ====================
-
-// Alle Sets eines Workouts abrufen
 exports.getWorkoutSets = async (req, res) => {
   try {
     const { workoutId } = req.params;
@@ -124,13 +235,15 @@ exports.getWorkoutSets = async (req, res) => {
 
     try {
       const [sets] = await connection.query(
-        `SELECT ws.id, ws.workout_id, ws.exercise_id, ws.set_number, ws.weight, ws.reps, ws.duration_seconds, e.name as exercise_name
+        `SELECT ws.id, ws.workout_id, ws.exercise_id, ws.set_number, ws.weight, ws.reps, ws.duration_seconds, e.name AS exercise_name
          FROM workout_sets ws
          JOIN exercises e ON ws.exercise_id = e.id
-         WHERE ws.workout_id = ?
-         ORDER BY ws.set_number`,
-        [workoutId]
+         JOIN workouts w ON w.id = ws.workout_id
+         WHERE ws.workout_id = ? AND w.user_id = ?
+         ORDER BY ws.set_number ASC`,
+        [workoutId, req.userId]
       );
+
       res.json(sets);
     } finally {
       connection.release();
@@ -140,7 +253,6 @@ exports.getWorkoutSets = async (req, res) => {
   }
 };
 
-// Einzelnes Set abrufen
 exports.getSetById = async (req, res) => {
   try {
     const { workoutId, setId } = req.params;
@@ -148,11 +260,12 @@ exports.getSetById = async (req, res) => {
 
     try {
       const [sets] = await connection.query(
-        `SELECT ws.id, ws.workout_id, ws.exercise_id, ws.set_number, ws.weight, ws.reps, ws.duration_seconds, e.name as exercise_name
+        `SELECT ws.id, ws.workout_id, ws.exercise_id, ws.set_number, ws.weight, ws.reps, ws.duration_seconds, e.name AS exercise_name
          FROM workout_sets ws
          JOIN exercises e ON ws.exercise_id = e.id
-         WHERE ws.id = ? AND ws.workout_id = ?`,
-        [setId, workoutId]
+         JOIN workouts w ON w.id = ws.workout_id
+         WHERE ws.id = ? AND ws.workout_id = ? AND w.user_id = ?`,
+        [setId, workoutId, req.userId]
       );
 
       if (sets.length === 0) {
@@ -168,7 +281,6 @@ exports.getSetById = async (req, res) => {
   }
 };
 
-// Neues Set zu Workout hinzufügen
 exports.createSet = async (req, res) => {
   try {
     const { workoutId } = req.params;
@@ -179,6 +291,7 @@ exports.createSet = async (req, res) => {
     }
 
     const connection = await pool.getConnection();
+
     try {
       const [result] = await connection.query(
         `INSERT INTO workout_sets (workout_id, exercise_id, set_number, weight, reps, duration_seconds)
@@ -198,17 +311,19 @@ exports.createSet = async (req, res) => {
   }
 };
 
-// Set aktualisieren
 exports.updateSet = async (req, res) => {
   try {
     const { workoutId, setId } = req.params;
     const { weight, reps, duration_seconds } = req.body;
-
     const connection = await pool.getConnection();
+
     try {
       await connection.query(
-        'UPDATE workout_sets SET weight = ?, reps = ?, duration_seconds = ? WHERE id = ? AND workout_id = ?',
-        [weight, reps, duration_seconds, setId, workoutId]
+        `UPDATE workout_sets ws
+         JOIN workouts w ON w.id = ws.workout_id
+         SET ws.weight = ?, ws.reps = ?, ws.duration_seconds = ?
+         WHERE ws.id = ? AND ws.workout_id = ? AND w.user_id = ?`,
+        [weight, reps, duration_seconds, setId, workoutId, req.userId]
       );
 
       res.json({ message: 'Set aktualisiert' });
@@ -220,7 +335,6 @@ exports.updateSet = async (req, res) => {
   }
 };
 
-// Set löschen
 exports.deleteSet = async (req, res) => {
   try {
     const { workoutId, setId } = req.params;
@@ -228,10 +342,13 @@ exports.deleteSet = async (req, res) => {
 
     try {
       await connection.query(
-        'DELETE FROM workout_sets WHERE id = ? AND workout_id = ?',
-        [setId, workoutId]
+        `DELETE ws FROM workout_sets ws
+         JOIN workouts w ON w.id = ws.workout_id
+         WHERE ws.id = ? AND ws.workout_id = ? AND w.user_id = ?`,
+        [setId, workoutId, req.userId]
       );
-      res.json({ message: 'Set gelöscht' });
+
+      res.json({ message: 'Set geloescht' });
     } finally {
       connection.release();
     }
@@ -240,26 +357,22 @@ exports.deleteSet = async (req, res) => {
   }
 };
 
-// Workout-Statistiken abrufen
 exports.getWorkoutStats = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.params.userId || req.userId;
     const connection = await pool.getConnection();
 
     try {
-      // Gesamt Workouts
       const [totalWorkouts] = await connection.query(
-        'SELECT COUNT(*) as count FROM workouts WHERE user_id = ?',
+        'SELECT COUNT(*) AS count FROM workouts WHERE user_id = ?',
         [userId]
       );
 
-      // Gesamt Volumen
       const [totalVolume] = await connection.query(
-        'SELECT SUM(total_volume) as volume FROM workouts WHERE user_id = ?',
+        'SELECT COALESCE(SUM(total_volume), 0) AS volume FROM workouts WHERE user_id = ?',
         [userId]
       );
 
-      // Letztes Workout
       const [lastWorkout] = await connection.query(
         'SELECT start_time FROM workouts WHERE user_id = ? ORDER BY start_time DESC LIMIT 1',
         [userId]

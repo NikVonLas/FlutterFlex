@@ -3,12 +3,51 @@ const { pool } = require('../config/db');
 // Alle Übungen abrufen
 exports.getAllExercises = async (req, res) => {
   try {
+    const { muscleGroup, search } = req.query;
     const connection = await pool.getConnection();
+
     try {
+      const conditions = [];
+      const params = [];
+
+      if (muscleGroup) {
+        conditions.push('muscle_group = ?');
+        params.push(muscleGroup);
+      }
+
+      if (search) {
+        conditions.push('(name LIKE ? OR description LIKE ?)');
+        params.push(`%${search}%`, `%${search}%`);
+      }
+
+      const whereClause = conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`;
       const [exercises] = await connection.query(
-        'SELECT id, name, muscle_group, description FROM exercises'
+        `SELECT id, name, muscle_group, description
+         FROM exercises
+         ${whereClause}
+         ORDER BY name ASC`,
+        params
       );
+
       res.json(exercises);
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getMuscleGroups = async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        'SELECT DISTINCT muscle_group FROM exercises ORDER BY muscle_group ASC'
+      );
+
+      res.json(rows.map((row) => row.muscle_group));
     } finally {
       connection.release();
     }

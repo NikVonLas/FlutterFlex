@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'flutterflex_db',
@@ -12,6 +13,45 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0
 });
+
+async function ensureColumn(connection, tableName, columnName, columnDefinition) {
+  const [columns] = await connection.query(
+    `SHOW COLUMNS FROM ${tableName} LIKE ?`,
+    [columnName]
+  );
+
+  if (columns.length === 0) {
+    await connection.query(
+      `ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`
+    );
+  }
+}
+
+async function seedExercises(connection) {
+  const [rows] = await connection.query('SELECT COUNT(*) AS total FROM exercises');
+
+  if (rows[0].total > 0) {
+    return;
+  }
+
+  const exercises = [
+    ['Bench Press', 'Brust', 'Mehrgelenksuebung fuer Brust, Schulter und Trizeps.'],
+    ['Incline Dumbbell Press', 'Brust', 'Fokus auf obere Brust mit Kurzhanteln.'],
+    ['Pull Up', 'Ruecken', 'Koerpergewichtsuebung fuer Ruecken und Bizeps.'],
+    ['Barbell Row', 'Ruecken', 'Kraeftigt den oberen Ruecken und die hintere Schulter.'],
+    ['Back Squat', 'Beine', 'Klassische Grunduebung fuer Unterkoerper und Core.'],
+    ['Romanian Deadlift', 'Beine', 'Trainiert hintere Kette und Beinbeuger.'],
+    ['Overhead Press', 'Schultern', 'Schulterdruecken fuer Kraft und Stabilitaet.'],
+    ['Barbell Curl', 'Arme', 'Isolationsuebung fuer den Bizeps.'],
+    ['Triceps Pushdown', 'Arme', 'Kabeluebung fuer den Trizeps.'],
+    ['Cable Crunch', 'Core', 'Belastet die Bauchmuskulatur kontrolliert.']
+  ];
+
+  await connection.query(
+    'INSERT INTO exercises (name, muscle_group, description) VALUES ?',
+    [exercises]
+  );
+}
 
 // Initialisierung des Datenbankschemas
 async function initializeDatabase() {
@@ -31,6 +71,7 @@ async function initializeDatabase() {
         profile_image MEDIUMBLOB,
         preferred_unit ENUM('kg', 'lbs') DEFAULT 'kg',
         preferred_theme INT DEFAULT 1,
+        preferred_mode ENUM('light', 'dark') DEFAULT 'dark',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -71,6 +112,15 @@ async function initializeDatabase() {
         FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
       )
     `);
+
+    await ensureColumn(
+      connection,
+      'users',
+      'preferred_mode',
+      "preferred_mode ENUM('light', 'dark') DEFAULT 'dark'"
+    );
+
+    await seedExercises(connection);
 
     console.log('Database initialized successfully');
   } catch (error) {

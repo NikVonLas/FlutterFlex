@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const authController = require('../controllers/authController');
+const verifyToken = require('../middleware/auth');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -8,16 +9,17 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Auth Endpoints
 router.post('/register', authController.register);
 router.post('/login', authController.login);
+router.get('/me', verifyToken, authController.getCurrentUser);
 
 // Profil Endpoints
-router.get('/profile/:userId', authController.getProfile);
-router.put('/profile/:userId', authController.updateProfile);
+router.get('/profile/:userId', verifyToken, authController.getProfile);
+router.put('/profile/:userId', verifyToken, authController.updateProfile);
 
 // Profilbild Endpoints
-router.get('/profile/:userId/image', authController.getProfileImage);
-router.post('/profile/:userId/image', upload.single('image'), authController.uploadProfileImage);
+router.get('/profile/:userId/image', verifyToken, authController.getProfileImage);
+router.post('/profile/:userId/image', verifyToken, upload.single('image'), authController.uploadProfileImage);
 
 // Einstellungen
-router.put('/preferences/:userId', authController.updatePreferences);
+router.put('/preferences/:userId', verifyToken, authController.updatePreferences);
 
 module.exports = router;

@@ -10,6 +10,7 @@ CREATE TABLE users (
     profile_image MEDIUMBLOB,  -- GEÄNDERT: Bild wird direkt in der DB gespeichert
     preferred_unit ENUM('kg', 'lbs') DEFAULT 'kg',
     preferred_theme INT DEFAULT 1,
+    preferred_mode ENUM('light', 'dark') DEFAULT 'dark',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
