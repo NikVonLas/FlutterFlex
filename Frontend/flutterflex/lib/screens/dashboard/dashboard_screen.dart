@@ -6,6 +6,7 @@ import '../../models/dashboard_summary.dart';
 import '../../models/workout_model.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../providers/workout_history_provider.dart';
+import '../../widgets/reveal_on_load.dart';
 import '../workout/workout_tracker_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -59,25 +60,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (dashboardProvider.summary != null) ...[
-              _HeroKpiCard(
-                summary: dashboardProvider.summary!,
-                onPressed: _openWorkoutTracker,
-              ),
-              const SizedBox(height: 20),
-              _ActivityCard(summary: dashboardProvider.summary!),
-              const SizedBox(height: 20),
-              _SectionHeader(
-                title: 'Letzte Workouts',
-                actionLabel: 'Training starten',
-                onActionPressed: _openWorkoutTracker,
-              ),
-              const SizedBox(height: 12),
-              ...dashboardProvider.summary!.recentWorkouts.map(
-                (workout) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _RecentWorkoutTile(workout: workout),
+              RevealOnLoad(
+                child: _HeroKpiCard(
+                  summary: dashboardProvider.summary!,
+                  onPressed: _openWorkoutTracker,
                 ),
               ),
+              const SizedBox(height: 20),
+              RevealOnLoad(
+                delay: const Duration(milliseconds: 120),
+                child: _ActivityCard(summary: dashboardProvider.summary!),
+              ),
+              const SizedBox(height: 20),
+              RevealOnLoad(
+                delay: const Duration(milliseconds: 220),
+                child: _SectionHeader(
+                  title: 'Letzte Workouts',
+                  actionLabel: 'Training starten',
+                  onActionPressed: _openWorkoutTracker,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...dashboardProvider.summary!.recentWorkouts.asMap().entries.map((
+                entry,
+              ) {
+                final index = entry.key;
+                final workout = entry.value;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: RevealOnLoad(
+                    delay: Duration(milliseconds: 280 + (index * 80)),
+                    offsetY: 16,
+                    child: _RecentWorkoutTile(workout: workout),
+                  ),
+                );
+              }),
             ] else ...[
               const SizedBox(height: 120),
               Icon(
@@ -247,10 +264,16 @@ class _ActivityCard extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             SizedBox(
-              height: 160,
+              height: 164,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
-                children: summary.activitySeries.map((point) {
+                children: summary.activitySeries.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final point = entry.value;
+                  final targetHeight =
+                      ((point.totalMinutes / maxValue) * 110) < 10
+                      ? 10.0
+                      : ((point.totalMinutes / maxValue) * 110);
                   return Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -261,26 +284,37 @@ class _ActivityCard extends StatelessWidget {
                             '${point.totalMinutes.toStringAsFixed(0)}m',
                             style: theme.textTheme.labelSmall,
                           ),
-                          const SizedBox(height: 8),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 350),
-                            height: ((point.totalMinutes / maxValue) * 110) < 10
-                                ? 10
-                                : ((point.totalMinutes / maxValue) * 110),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              gradient: LinearGradient(
-                                colors: [
-                                  theme.colorScheme.primary,
-                                  theme.colorScheme.secondary,
-                                ],
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                              ),
+                          const SizedBox(height: 6),
+                          TweenAnimationBuilder<double>(
+                            duration: Duration(
+                              milliseconds: 480 + (index * 90),
                             ),
+                            curve: Curves.easeOutCubic,
+                            tween: Tween<double>(begin: 0, end: targetHeight),
+                            builder: (context, animatedHeight, child) {
+                              return Container(
+                                height: animatedHeight,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      theme.colorScheme.primary,
+                                      theme.colorScheme.secondary,
+                                    ],
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                          const SizedBox(height: 8),
-                          Text(point.label),
+                          const SizedBox(height: 6),
+                          Text(
+                            point.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall,
+                          ),
                         ],
                       ),
                     ),

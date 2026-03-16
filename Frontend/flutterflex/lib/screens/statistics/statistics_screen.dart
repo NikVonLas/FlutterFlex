@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../models/workout_model.dart';
 import '../../providers/app_settings_provider.dart';
 import '../../providers/workout_history_provider.dart';
+import '../../widgets/reveal_on_load.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -84,7 +85,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         int.tryParse(workoutGoalController.text.trim()) ??
         appSettings.weeklyWorkoutGoal;
     final volumeGoal =
-        double.tryParse(volumeGoalController.text.trim().replaceAll(',', '.')) ??
+        double.tryParse(
+          volumeGoalController.text.trim().replaceAll(',', '.'),
+        ) ??
         appSettings.weeklyVolumeGoal;
 
     await appSettings.setWeeklyGoals(
@@ -110,11 +113,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         ? 0.0
         : totalVolume / historyProvider.workouts.length;
     final safeWorkoutGoal = appSettings.weeklyWorkoutGoal < 1
-      ? 1
-      : appSettings.weeklyWorkoutGoal;
-    final safeVolumeGoal = (appSettings.weeklyVolumeGoal <= 0
-      ? 100
-      : appSettings.weeklyVolumeGoal).toDouble();
+        ? 1
+        : appSettings.weeklyWorkoutGoal;
+    final safeVolumeGoal =
+        (appSettings.weeklyVolumeGoal <= 0 ? 100 : appSettings.weeklyVolumeGoal)
+            .toDouble();
     final workoutGoalProgress = weeklyStats.workoutCount / safeWorkoutGoal;
     final volumeGoalProgress = weeklyStats.totalVolume / safeVolumeGoal;
 
@@ -131,31 +134,44 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else ...[
-              _GoalProgressCard(
-                weeklyStats: weeklyStats,
-                workoutGoal: safeWorkoutGoal,
-                volumeGoal: safeVolumeGoal,
-                workoutGoalProgress: workoutGoalProgress,
-                volumeGoalProgress: volumeGoalProgress,
-                onEditPressed: () => _editGoals(context),
+              RevealOnLoad(
+                child: _GoalProgressCard(
+                  weeklyStats: weeklyStats,
+                  workoutGoal: safeWorkoutGoal,
+                  volumeGoal: safeVolumeGoal,
+                  workoutGoalProgress: workoutGoalProgress,
+                  volumeGoalProgress: volumeGoalProgress,
+                  onEditPressed: () => _editGoals(context),
+                ),
               ),
               const SizedBox(height: 16),
-              _MetricsGrid(
-                totalWorkouts: historyProvider.workouts.length,
-                totalVolume: totalVolume,
-                totalSets: totalSets,
-                averageVolume: averageVolume,
+              RevealOnLoad(
+                delay: const Duration(milliseconds: 90),
+                child: _MetricsGrid(
+                  totalWorkouts: historyProvider.workouts.length,
+                  totalVolume: totalVolume,
+                  totalSets: totalSets,
+                  averageVolume: averageVolume,
+                ),
               ),
               const SizedBox(height: 16),
-              _VolumeTrendCard(workouts: historyProvider.workouts),
-              const SizedBox(height: 16),
-              _WorkoutTypeDonutCard(
-                workouts: historyProvider.workouts,
-                isColorBlindMode: appSettings.isColorBlindMode,
-                primaryColor: Theme.of(context).colorScheme.primary,
+              RevealOnLoad(
+                delay: const Duration(milliseconds: 170),
+                child: _VolumeTrendCard(workouts: historyProvider.workouts),
               ),
               const SizedBox(height: 16),
-              const _MuscleGroupCard(),
+              RevealOnLoad(
+                delay: const Duration(milliseconds: 250),
+                child: _WorkoutTypeDonutCard(
+                  workouts: historyProvider.workouts,
+                  primaryColor: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const RevealOnLoad(
+                delay: Duration(milliseconds: 320),
+                child: _MuscleGroupCard(),
+              ),
               if (historyProvider.errorMessage != null &&
                   historyProvider.workouts.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -310,7 +326,8 @@ class _VolumeTrendCard extends StatelessWidget {
     final series = _buildSeries(workouts);
     final maxValue = series.fold<double>(
       1,
-      (currentMax, point) => point.volume > currentMax ? point.volume : currentMax,
+      (currentMax, point) =>
+          point.volume > currentMax ? point.volume : currentMax,
     );
 
     return Card(
@@ -331,7 +348,9 @@ class _VolumeTrendCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: series.map((point) {
-                  final barHeight = math.max(10, (point.volume / maxValue) * 125).toDouble();
+                  final barHeight = math
+                      .max(10, (point.volume / maxValue) * 125)
+                      .toDouble();
                   return Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -341,7 +360,7 @@ class _VolumeTrendCard extends StatelessWidget {
                           Text(
                             point.volume.toStringAsFixed(0),
                             style: theme.textTheme.labelSmall,
-                          ),  
+                          ),
                           const SizedBox(height: 8),
                           Container(
                             height: barHeight,
@@ -377,7 +396,9 @@ class _VolumeTrendCard extends StatelessWidget {
     final dailyTotals = <String, double>{};
 
     for (final workout in workouts) {
-      if (workout.startTime.isBefore(DateTime(cutoff.year, cutoff.month, cutoff.day))) {
+      if (workout.startTime.isBefore(
+        DateTime(cutoff.year, cutoff.month, cutoff.day),
+      )) {
         continue;
       }
 
@@ -428,21 +449,16 @@ class _TrendPoint {
 class _WorkoutTypeDonutCard extends StatelessWidget {
   const _WorkoutTypeDonutCard({
     required this.workouts,
-    required this.isColorBlindMode,
     required this.primaryColor,
   });
 
   final List<WorkoutModel> workouts;
-  final bool isColorBlindMode;
   final Color primaryColor;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final distribution = _buildDistribution(
-      isColorBlindMode: isColorBlindMode,
-      primaryColor: primaryColor,
-    );
+    final distribution = _buildDistribution(primaryColor: primaryColor);
 
     return Card(
       child: Padding(
@@ -512,10 +528,7 @@ class _WorkoutTypeDonutCard extends StatelessWidget {
     );
   }
 
-  List<_DonutSegment> _buildDistribution({
-    required bool isColorBlindMode,
-    required Color primaryColor,
-  }) {
+  List<_DonutSegment> _buildDistribution({required Color primaryColor}) {
     if (workouts.isEmpty) return const [];
 
     final byType = <String, int>{};
@@ -527,18 +540,7 @@ class _WorkoutTypeDonutCard extends StatelessWidget {
     }
 
     final count = byType.length.clamp(3, 8);
-    final palette = isColorBlindMode
-        ? const <Color>[
-            Color(0xFF0072B2),
-            Color(0xFFE69F00),
-            Color(0xFF56B4E9),
-            Color(0xFFCC79A7),
-            Color(0xFF009E73),
-            Color(0xFFF0E442),
-            Color(0xFFD55E00),
-            Color(0xFF000000),
-          ]
-        : _buildThemePalette(primaryColor, count);
+    final palette = _buildThemePalette(primaryColor, count);
 
     final sorted = byType.entries.toList()
       ..sort((left, right) => right.value.compareTo(left.value));
@@ -576,10 +578,12 @@ class _DonutChartPainter extends CustomPainter {
 
   final List<_DonutSegment> segments;
 
-
   @override
   void paint(Canvas canvas, Size size) {
-    final total = segments.fold<double>(0, (sum, segment) => sum + segment.value);
+    final total = segments.fold<double>(
+      0,
+      (sum, segment) => sum + segment.value,
+    );
     if (total <= 0) {
       return;
     }
@@ -606,6 +610,7 @@ class _DonutChartPainter extends CustomPainter {
     return oldDelegate.segments != segments;
   }
 }
+
 List<Color> _buildThemePalette(Color primary, int count) {
   final hsl = HSLColor.fromColor(primary);
   final s = (hsl.saturation * 0.9).clamp(0.45, 0.85);

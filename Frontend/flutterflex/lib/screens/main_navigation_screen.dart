@@ -13,8 +13,12 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
+  late final AnimationController _tabTransitionController;
+  late final Animation<double> _tabOpacity;
+  late final Animation<Offset> _tabSlide;
 
   late final List<Widget> _screens = [
     const DashboardScreen(),
@@ -25,9 +29,43 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _tabTransitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    )..forward();
+
+    _tabOpacity = CurvedAnimation(
+      parent: _tabTransitionController,
+      curve: Curves.easeOut,
+    );
+
+    _tabSlide = Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _tabTransitionController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+  }
+
+  @override
+  void dispose() {
+    _tabTransitionController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _screens),
+      body: FadeTransition(
+        opacity: _tabOpacity,
+        child: SlideTransition(
+          position: _tabSlide,
+          child: IndexedStack(index: _selectedIndex, children: _screens),
+        ),
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
@@ -38,6 +76,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               setState(() {
                 _selectedIndex = index;
               });
+              _tabTransitionController.forward(from: 0);
             },
             destinations: const [
               NavigationDestination(

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/dashboard_provider.dart';
 import '../../providers/workout_history_provider.dart';
+import '../../widgets/reveal_on_load.dart';
 import '../workout/workout_tracker_screen.dart';
 import '../workout/edit_workout_screen.dart';
 
@@ -51,7 +52,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Das ausgewaehlte Datum darf nicht in der Zukunft liegen.'),
+          content: Text(
+            'Das ausgewaehlte Datum darf nicht in der Zukunft liegen.',
+          ),
         ),
       );
       return;
@@ -80,7 +83,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _openEditWorkout(int workoutId) async {
     final wasUpdated = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => EditWorkoutScreen(workoutId: workoutId)),
+      MaterialPageRoute(
+        builder: (_) => EditWorkoutScreen(workoutId: workoutId),
+      ),
     );
 
     if (wasUpdated != true || !mounted) {
@@ -123,9 +128,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            Text(
-              'Alle vergangenen Trainingseinheiten live aus dem Backend.',
-              style: Theme.of(context).textTheme.titleMedium,
+            RevealOnLoad(
+              child: Text(
+                'Alle vergangenen Trainingseinheiten live aus dem Backend.',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
             const SizedBox(height: 16),
             if (historyProvider.isLoading && historyProvider.workouts.isEmpty)
@@ -141,33 +148,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               )
             else
-              ...historyProvider.workouts.map(
-                (workout) => Padding(
+              ...historyProvider.workouts.asMap().entries.map((entry) {
+                final index = entry.key;
+                final workout = entry.value;
+                return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Card(
-                    child: ListTile(
-                      onTap: () => _openEditWorkout(workout.id),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 10,
-                      ),
-                      title: Text(workout.name),
-                      subtitle: Text(
-                        '${dateFormat.format(workout.startTime)}  |  ${workout.workoutType}',
-                      ),
-                      trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Icon(Icons.edit_outlined, size: 18),
-                          const SizedBox(height: 4),
-                          Text('${workout.totalSets} Saetze'),
-                        ],
+                  child: RevealOnLoad(
+                    delay: Duration(milliseconds: 90 + (index * 55)),
+                    offsetY: 14,
+                    child: Card(
+                      child: ListTile(
+                        onTap: () => _openEditWorkout(workout.id),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 10,
+                        ),
+                        title: Text(workout.name),
+                        subtitle: Text(
+                          '${dateFormat.format(workout.startTime)}  |  ${workout.workoutType}',
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Icon(Icons.edit_outlined, size: 18),
+                            const SizedBox(height: 4),
+                            Text('${workout.totalSets} Saetze'),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
+                );
+              }),
           ],
         ),
       ),
